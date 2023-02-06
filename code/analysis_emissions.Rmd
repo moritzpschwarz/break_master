@@ -1,0 +1,104 @@
+---
+title: "Analysis_Emissions"
+author: "Ebba Mark"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+# Load libraries
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+rm(list = ls())
+library(tidyverse)
+library(gets)
+library(getspanel)
+library(here)
+library(doParallel)
+
+source(here("code/dicts.R"))
+source(here("code/overview_functions.R"))
+
+data <- readRDS(here("data/out/emissions_panel.RDS"))
+cty_sample <- readRDS(here("data/out/country_sample.RDS"))
+
+```
+
+# Create controls and scale emissions (mtCO2 -> ktco2)
+
+```{r}
+
+dfi <- data %>% 
+  mutate(gdp_sq = gdp^2,
+         lpop = log(pop),
+         lgdp = log(gdp),
+         lgdp_sq = log(gdp)^2,
+         # ktco2
+         across(contains("emissions"), ~.x*1000),
+         across(contains("emissions"), ~log(.x), .names = "log_{.col}")) %>% 
+  filter(year >= 2000)
+
+# Sanity check
+dfi %>% pull(country) %>% unique %>% identical(cty_sample)
+
+dfi %>% select(country, year, contains("log")) %>% pivot_longer(cols = !c(country, year), names_to = "sector", values_to = "emissions") %>% 
+  ggplot(aes(x = year, y = emissions, group = sector)) +
+  geom_line() +
+  facet_wrap(~country)
+
+```
+
+# Functional forms
+```{r}
+
+controls <- " ~ lgdp + lpop + lgdp_sq"
+              #" ~ lgdp + lpop + lgdp_sq + hdd + cdd"
+
+core_deps <- c("log_power_industry_emissions",
+          "log_buildings_emissions",
+          "log_transport_emissions",
+          "log_other_industrial_emissions")
+
+add_deps <- c("log_other_sectors_emissions")
+
+```
+
+## Power, buildings, transport emissions w.o weather controls
+18 models
+```{r}
+
+base_forms <- paste0(core_deps, controls)
+
+cl <- makeCluster(6)
+registerDoParallel(cl)
+
+models <- foreach(f = base_forms, .combine = rbind, .packages = c('tidyverse', 'getspanel')) %:%
+  foreach(a = c(0,1), .combine = rbind) %:%
+  #foreach(b = c(10, 20, 30), .combine = rbind) %:%
+  foreach(p.value = c(0.05, 0.01, 0.001), .combine = rbind) %dopar% {
+    dat <- dfi
+      is <- isatpanel(
+            data = dat,
+            formula = as.formula(f),
+            index = c("country", "year"),
+            effect = "twoways",
+            iis = TRUE,
+            fesis = TRUE,
+            ar = a,
+            t.pval = p.value,
+            max.block.size = 20
+            )
+          models = tibble(source = f, 
+                          country_sample = n_distinct(dat$country), 
+                          year_range = paste0(min(dat$year),":",max(dat$year)), 
+                          p_val = p.value, 
+                          is = list(is),
+                          iis = TRUE,
+                          b_size = 20,
+                          ar = a)
+    }
+
+saveRDS(models, here("output/model_results/standard_models.RDS"))
+
+```
