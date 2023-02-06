@@ -8,3 +8,168 @@ output: html_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
+
+
+## Introduction
+
+Main file for cleaning and judging completeness/scope of various downloaded 
+data files. Each chunk caters to one data file with accompanying description of selected indicators
+
+```{r setup, include=FALSE}
+rm(list = ls())
+knitr::opts_chunk$set(echo = TRUE)
+library(conflicted)
+library(data.table)
+library(here)
+library(tidyverse)
+library(readxl)
+library(openxlsx)
+library(stringr)
+library(janitor)
+library(plm)
+library(pdftools)
+library(lubridate)
+library(countrycode)
+conflict_prefer_all("dplyr", quiet = TRUE)
+
+```
+
+# Dictionaries and functions
+```{r}
+
+source(here("code/dicts.R"))
+
+```
+
+# Country sample
+```{r}
+
+cty_sample <- read_xls(here("data/raw/CAPMF_by_Comp_151222.xls")) %>% 
+  filter(ISO != "EUR") %>% 
+  pull(ISO) %>% 
+  unique %>% 
+  countrycode(origin = "iso3c", destination = "country.name") %>% 
+  lapply(., get_country) %>% unlist
+
+#saveRDS(cty_sample, "data/out/country_sample.RDS")
+
+```
+
+#EDGAR v7.0
+Released 2022
+
+Description: Timeseries of fossil CO2 from 1970 till 2021 for all world countries with sector-specific break-down. CO2 LULUCF emissions from 1990 to 2021 by macro-regions. The Emissions Database for Global Atmospheric Research (EDGAR) provides independent estimates of the global anthropogenic emissions and emission trends, based on publicly available statistics, for the atmospheric modeling community as well as for policy makers. This scientific independent emission inventory is characterized by a coherent world historical trend from 1970 to year x-3, including emissions of all greenhouse gases, air pollutants and aerosols.
+
+https://data.jrc.ec.europa.eu/dataset/e0344cc3-e553-4dd4-ac4c-f569c8859e19
+
+Indicators:
+edgar_power_emissions: emissions from power industry
+Verified: Largely identical to V6.0 EDGAR indicator chosen above apart from a few (likely) improvements in data coverage.
+
+```{r}
+edgar_v7 <- read_xlsx(here("data/raw/EDGARv7.0_FT2021_fossil_CO2_booklet2022.xlsx"), sheet = "fossil_CO2_by_sector_and_countr") %>% 
+  rename(country = Country, sector = Sector) %>%
+  select(-c("Substance", "EDGAR Country Code")) %>%
+  pivot_longer(!c(country, sector), names_to = 'year', values_to = 'emissions', values_transform = c(emissions = as.numeric)) %>%
+  pivot_wider(id_cols = c(country, year), names_from = sector,  names_glue = "{sector}_emissions", values_from = emissions) %>% clean_names %>% 
+  mutate(country = ifelse(country %in% names(getcountry), unname(getcountry[country]), country), year = as.numeric(year)) %>% 
+  filter(country %in% cty_sample)
+
+# Malta missing "other industrial combustion emissions from 1970-2004
+edgar_v7 %>% filter(!complete.cases(.)) %>% View()
+
+
+```
+
+# Population controls
+Sourced from the World Bank.
+
+Population: https://data.worldbank.org/indicator/SP.POP.TOTL
+
+```{r}
+
+pop_stats <- read.csv(here("data/raw/WB_pop_stats.csv"), nrows = 9114) %>% select(1,3,5) %>% 
+  rename(year = Time, country = Country.Name, pop = `Population..total..SP.POP.TOTL.`) %>% 
+  mutate(country = ifelse(country %in% names(getcountry), unname(getcountry[country]), country),
+         year = as.numeric(year),
+         pop = as.numeric(pop)) %>% 
+  filter(country %in% cty_sample) %>% tibble
+
+```
+
+
+# GDP (constant 2015)
+Canada missing from 1990-1996: Comparing and supplementing with OECD data
+
+Croatia, Estonia, Hungary, Iceland, Israel, Latvia, Lithuania, Slovak Republic, Slovenia missing from max 1990-1994
+
+```{r}
+
+gdp_stats <- read.csv(here('data/raw/wb_constant2015_GDP.csv'), nrows = 10199) %>%
+  rename(year = Time, country = Country.Name, gdp = "GDP..constant.2015.US....NY.GDP.MKTP.KD.") %>% 
+  select(year, country, gdp) %>% 
+   mutate(country = ifelse(country %in% names(getcountry), unname(getcountry[country]), country),
+          gdp = as.numeric(gdp)) %>% 
+  filter(country %in% cty_sample) %>% tibble
+
+```
+
+# Tests
+```{r}
+
+cty_sample[!(cty_sample %in% edgar_v7$country)]
+cty_sample[!(cty_sample %in% gdp_stats$country)]
+cty_sample[!(cty_sample %in% pop_stats$country)]
+
+edgar_v7 %>% 
+  filter(year >= 2000, !complete.cases(.))
+
+gdp_stats %>% 
+  filter(year >= 2000, !complete.cases(.))
+
+pop_stats %>% 
+  filter(year >= 2000, !complete.cases(.))
+
+```
+
+
+# Combine all
+```{r}
+
+full_emissions <- left_join(edgar_v7, gdp_stats, by = c("country", "year")) %>%
+  left_join(., pop_stats, by = c("country", "year"))
+
+```
+
+# Tests 2
+```{r}
+
+cty_sample[!(cty_sample %in% full_emissions$country)]
+
+full_emissions %>% 
+  filter(year >= 1990, !complete.cases(.))
+
+full_emissions %>% 
+  filter(year >= 2000, !complete.cases(.))
+
+```
+
+# Save
+```{r}
+
+saveRDS(full_emissions, here("data/out/emissions_panel.RDS"))
+
+```
+
+
+# Variable Documentation
+```{r, eval = FALSE, include = FALSE}
+
+vars <- read_xlsx(here("data/out/Variable_Documentation.xlsx"))
+
+#write.xlsx(vars, here("data/out/Variable_Documentation.xlsx"))
+all.equal(vars$Name, names(data))
+# vars[match(names(data), vars$Name),]  %>% identical(vars)
+
+```
+
