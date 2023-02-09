@@ -27,8 +27,6 @@ library(openxlsx)
 library(stringr)
 library(janitor)
 library(plm)
-library(pdftools)
-library(lubridate)
 library(countrycode)
 conflict_prefer_all("dplyr", quiet = TRUE)
 
@@ -67,7 +65,7 @@ edgar_power_emissions: emissions from power industry
 Verified: Largely identical to V6.0 EDGAR indicator chosen above apart from a few (likely) improvements in data coverage.
 
 ```{r}
-edgar_v7 <- read_xlsx(here("data/raw/EDGARv7.0_FT2021_fossil_CO2_booklet2022.xlsx"), sheet = "fossil_CO2_by_sector_and_countr") %>% 
+edgar_sectors <- read_xlsx(here("data/raw/EDGARv7.0_FT2021_fossil_CO2_booklet2022.xlsx"), sheet = "fossil_CO2_by_sector_and_countr") %>% 
   rename(country = Country, sector = Sector) %>%
   select(-c("Substance", "EDGAR Country Code")) %>%
   pivot_longer(!c(country, sector), names_to = 'year', values_to = 'emissions', values_transform = c(emissions = as.numeric)) %>%
@@ -75,8 +73,21 @@ edgar_v7 <- read_xlsx(here("data/raw/EDGARv7.0_FT2021_fossil_CO2_booklet2022.xls
   mutate(country = ifelse(country %in% names(getcountry), unname(getcountry[country]), country), year = as.numeric(year)) %>% 
   filter(country %in% cty_sample)
 
+edgar_totals <- read_xlsx(here("data/raw/EDGARv7.0_FT2021_fossil_CO2_booklet2022.xlsx"), sheet = "fossil_CO2_totals_by_country") %>% 
+    rename(country = Country) %>% 
+    remove_empty("rows") %>%
+    select(-c("Substance", "EDGAR Country Code")) %>%
+    pivot_longer(!c(country), names_to = 'year', values_to = 'total_co2_emissions', values_transform = c(total_co2_emissions = as.numeric)) %>%
+    mutate(country = ifelse(country %in% names(getcountry), unname(getcountry[country]), country), year = as.numeric(year)) %>% 
+    filter(country %in% cty_sample)
+
 # Malta missing "other industrial combustion emissions from 1970-2004
-test_complete(edgar_v7)
+test_complete(edgar_sectors)
+test_complete(edgar_totals)
+test_diff(edgar_sectors, edgar_totals, c("year", "country"))
+
+edgar_v7 <- left_join(edgar_sectors, edgar_totals, by = c("country", "year"))
+rm(edgar_sectors, edgar_totals)
 
 ```
 

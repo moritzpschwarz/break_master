@@ -2,6 +2,7 @@ library(here)
 library(tidyverse)
 library(readxl)
 library(gdata)
+library(plm)
 
 
 # Country groupings
@@ -30,6 +31,8 @@ for(i in 1:nrow(AC6)){
 }
 AC6_HICs <- c(AC6_HICs, "Russia")
 
+AC6_all <- c(AC6_HICs, AC6_LICs, AC6_LMICs, AC6_UMICs)
+
 # AC1 -> Eastern Europe vs. Rest
 east_euro <- setdiff(EU31[!(EU31 %in% c("Switzerland", "Iceland", "Norway", "Cyprus", "Malta"))], EU15)
 euro_main <- setdiff(EU31[EU31 != "Cyprus"], east_euro)
@@ -44,7 +47,7 @@ emerging <- c("Argentina", "Brazil", "China", "Chile", "Costa Rica", "Colombia",
               "Turkey")
 
 # Combine
-samples <- mget(c("EU15", "EU31", "AC1", "AC6_HICs", "AC6_UMICs", "AC6_LMICs", "east_euro", "euro_main", "OECD", "emerging"))
+samples <- mget(c("EU15", "EU31", "AC1", "AC6_HICs", "AC6_UMICs", "AC6_LMICs", "AC6_all", "east_euro", "euro_main", "OECD", "emerging"))
 
 #### Name standardisation
 country_dict <- readRDS(here("data/out/countrydict.RDS"))
@@ -85,4 +88,17 @@ test_complete <- function(df){
           print(tmp)
           }
   
+}
+
+test_diff <- function(df1 = data.frame, df2 = data.frame, vars = list){
+  for(i in 1:length(vars)){
+    a <- df1 %>% pull(vars[i])
+    b <- df2 %>% pull(vars[i])
+    if(length(setdiff(a,b) != 0)) {
+      print(paste(deparse(substitute(df1)),"has extra:",setdiff(a,b)))
+    }else{print(paste(vars[i],"match"))}
+    if(length(setdiff(b,a) != 0)) {
+      print(paste(deparse(substitute(df2)),"has extra:",setdiff(b,a)))
+    }else{print(paste(vars[i],"match"))}
+  }
 }
