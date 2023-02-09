@@ -1,3 +1,5 @@
+library(tidyverse)
+
 # Plotting functions
 
 f <- function(k) {
