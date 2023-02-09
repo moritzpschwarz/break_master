@@ -76,8 +76,7 @@ edgar_v7 <- read_xlsx(here("data/raw/EDGARv7.0_FT2021_fossil_CO2_booklet2022.xls
   filter(country %in% cty_sample)
 
 # Malta missing "other industrial combustion emissions from 1970-2004
-edgar_v7 %>% filter(!complete.cases(.)) %>% View()
-
+test_complete(edgar_v7)
 
 ```
 
@@ -95,6 +94,8 @@ pop_stats <- read.csv(here("data/raw/WB_pop_stats.csv"), nrows = 9114) %>% selec
          pop = as.numeric(pop)) %>% 
   filter(country %in% cty_sample) %>% tibble
 
+test_complete(pop_stats)
+
 ```
 
 
@@ -110,66 +111,52 @@ gdp_stats <- read.csv(here('data/raw/wb_constant2015_GDP.csv'), nrows = 10199) %
   select(year, country, gdp) %>% 
    mutate(country = ifelse(country %in% names(getcountry), unname(getcountry[country]), country),
           gdp = as.numeric(gdp)) %>% 
-  filter(country %in% cty_sample) %>% tibble
+  filter(country %in% cty_sample) %>% tibble 
+
+test_complete(gdp_stats)
 
 ```
 
-# Tests
+# HDD & CDD
+https://www.iea.org/data-and-statistics/data-tools/weather-for-energy-tracker
+HDD: 16 C population weighted
+CDD: 18 C population weighted
 ```{r}
 
-cty_sample[!(cty_sample %in% edgar_v7$country)]
-cty_sample[!(cty_sample %in% gdp_stats$country)]
-cty_sample[!(cty_sample %in% pop_stats$country)]
+weather <- read.csv(here("data/raw/IEA-CMCC-WeatherForEnergy-HDD16dailybypop-from-2000-to-2022.csv")) %>%
+  left_join(read.csv(here("data/raw/IEA-CMCC-WeatherForEnergy-CDD18dailybypop-from-2000-to-2022.csv")), by = c("Territory", "Date")) %>% 
+  select(country = Territory, year = Date, hdd = HDD16dailybypop, cdd = CDD18dailybypop) %>% tibble %>% 
+  mutate(country = ifelse(country %in% names(getcountry), unname(getcountry[country]), country)) %>% 
+  filter(country %in% cty_sample)
 
-edgar_v7 %>% 
-  filter(year >= 2000, !complete.cases(.))
-
-gdp_stats %>% 
-  filter(year >= 2000, !complete.cases(.))
-
-pop_stats %>% 
-  filter(year >= 2000, !complete.cases(.))
+test_complete(weather)
 
 ```
-
 
 # Combine all
 ```{r}
 
 full_emissions <- left_join(edgar_v7, gdp_stats, by = c("country", "year")) %>%
-  left_join(., pop_stats, by = c("country", "year"))
+  left_join(., pop_stats, by = c("country", "year")) %>% 
+  left_join(., weather, by = c("country", "year"))
 
-```
-
-# Tests 2
-```{r}
-
-cty_sample[!(cty_sample %in% full_emissions$country)]
-
-full_emissions %>% 
-  filter(year >= 1990, !complete.cases(.))
-
-full_emissions %>% 
-  filter(year >= 2000, !complete.cases(.))
+test_complete(full_emissions)
 
 ```
 
 # Save
 ```{r}
 
-saveRDS(full_emissions, here("data/out/emissions_panel.RDS"))
+#saveRDS(full_emissions, here("data/out/emissions_panel.RDS"))
 
 ```
 
 
-# Variable Documentation
+# Variable Documentation (to be added)
 ```{r, eval = FALSE, include = FALSE}
 
-vars <- read_xlsx(here("data/out/Variable_Documentation.xlsx"))
-
-#write.xlsx(vars, here("data/out/Variable_Documentation.xlsx"))
-all.equal(vars$Name, names(data))
-# vars[match(names(data), vars$Name),]  %>% identical(vars)
+# data.frame(vars = names(full_emissions)) %>% 
+# write.xlsx(., here("data/out/Variable_Documentation.xlsx"))
 
 ```
 
