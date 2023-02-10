@@ -47,7 +47,7 @@ emerging <- c("Argentina", "Brazil", "China", "Chile", "Costa Rica", "Colombia",
               "Turkey")
 
 # Combine
-samples <- mget(c("EU15", "EU31", "AC1", "AC6_HICs", "AC6_UMICs", "AC6_LMICs", "AC6_all", "east_euro", "euro_main", "OECD", "emerging"))
+samples <- mget(c("EU15", "EU31", "AC1", "AC6_HICs", "AC6_UMICs", "AC6_LMICs", "AC6_all", "east_euro", "euro_main", "OECD", "emerging", "cty_sample"))
 
 #### Name standardisation
 country_dict <- readRDS(here("data/out/countrydict.RDS"))
