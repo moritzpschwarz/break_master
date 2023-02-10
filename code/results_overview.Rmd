@@ -1,0 +1,101 @@
+---
+title: "Selected Results"
+date: "`r Sys.Date()`"
+output: 
+  html_document:
+    dev: ragg_png
+
+---
+
+```{r set-options, echo=FALSE, cache=FALSE}
+options(width = 3000)
+```
+
+```{css, echo=FALSE}
+pre {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, max.height = '300px', fig.width = 16, fig.height = 8) #fig.show="hold",,
+
+library(data.table)
+library(tidyverse)
+library(openxlsx)
+library(gets)
+library(getspanel)
+library(here)
+library(doParallel)
+library(gridExtra)
+library(conflicted)
+library(viridis)
+
+conflict_prefer("filter", "dplyr")
+conflict_prefer("first", "dplyr")
+conflict_prefer("lag", "dplyr")
+
+source(here("code/dicts.R"))
+source(here("code/overview_functions.R"))
+
+standard <- readRDS(here("output/model_results/all_models.RDS")) %>% 
+  separate(source, into = c("dep","formula"), sep = "[~]", remove = FALSE) %>%
+  mutate(dep = str_to_title(gsub("log ", "", gsub("_"," ", trimws(dep)))),
+         formula = trimws(formula),
+         mod_name = case_when(!grepl("cdd", source) ~ "Standard Controls",
+                              grepl("cdd", source) & grepl("lgdp", source) ~ "Standard Controls w. Temp"))
+
+# Control filter
+stand_disp <- standard %>%
+  filter(ar == 0 & mod_name == "Standard Controls w. Temp" & p_val == 0.01 & country_sample %in% c("Full Sample", "AC1", "AC6_all", "OECD", "EU15", "EU31", "emerging", "east_euro", "euro_main"))
+  
+
+
+```
+
+## Overview {.tabset}
+
+```{r auto tabs, echo = FALSE, results = 'asis'}
+
+stand_disp %>% 
+      dplyr::group_split(country_sample) %>%
+      purrr::iwalk(.,~{
+        name <- unique(.x$country_sample)
+        cat('### ', name, '{.tabset}   \n')
+          for(d in unique(.x$dep)){
+             cat('#### ', d, '{.tabset}   \n')
+             filter(.x, dep == d) %>% gen_p(., auto = TRUE)
+                cat('\n')
+                cat('\n')
+              }
+            cat('\n')
+            cat('\n')
+      })
+
+
+```
+
+
+<!-- ## Model Overview by outcome variable {.tabset} -->
+<!-- NEED TO ACCOUNT FOR COUNTRY SAMPLES HERE - BELOW PLOTS ARE NONSENSICAL AT THE MOMENT -->
+
+<!-- ```{r, echo = FALSE, results = 'asis'} -->
+
+<!-- stand_disp %>% -->
+<!--   mutate(model = paste(dep, mod_name)) %>% -->
+<!--   convert_mult %>% -->
+<!--       dplyr::group_split(id) %>% -->
+<!--       purrr::iwalk(.,~{ -->
+<!--         c <- unique(.x$id) -->
+<!--         if(!all(is.na(.x$effect))){ -->
+<!--           cat('### ', c, '   \n') -->
+<!--           plot_country(.x, country = c, na.rm = TRUE) -->
+<!--           } -->
+<!--         cat('\n') -->
+<!--         cat('\n') -->
+<!--       }) -->
+
+<!-- ``` -->
+
