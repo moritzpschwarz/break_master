@@ -81,13 +81,21 @@ edgar_totals <- read_xlsx(here("data/raw/EDGARv7.0_FT2021_fossil_CO2_booklet2022
     mutate(country = ifelse(country %in% names(getcountry), unname(getcountry[country]), country), year = as.numeric(year)) %>% 
     filter(country %in% cty_sample)
 
-# Malta missing "other industrial combustion emissions from 1970-2004
-test_complete(edgar_sectors)
-test_complete(edgar_totals)
 test_diff(edgar_sectors, edgar_totals, c("year", "country"))
 
-edgar_v7 <- left_join(edgar_sectors, edgar_totals, by = c("country", "year"))
-rm(edgar_sectors, edgar_totals)
+# Malta missing "other industrial combustion emissions from 2000-2004
+# total_co2_emissions is a perfect sum of all sectors in edgar_sectors (test in comment below)
+
+edgar_v7 <- left_join(edgar_sectors, edgar_totals, by = c("country", "year")) %>%
+  mutate(other_industrial_combustion_emissions = ifelse(country == "Malta" & year %in% 1970:2004,
+                                                        total_co2_emissions - power_industry_emissions -
+                                        buildings_emissions - transport_emissions -
+                                        other_sectors_emissions, other_industrial_combustion_emissions))
+
+test_complete(edgar_v7)
+# not_rep <- left_join(edgar_sectors, edgar_totals, by = c("country", "year"))
+# edgar_v7 %>% filter(country != "Malta") %>% identical(filter(not_rep, country != "Malta" ))
+
 
 ```
 
